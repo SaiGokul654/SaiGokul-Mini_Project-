@@ -37,6 +37,7 @@ export interface IStorage {
   createHealthRecord(record: InsertHealthRecord): Promise<HealthRecord>;
   getHealthRecordsByPatient(patientId: string): Promise<any[]>;
   getRecentRecordsByHospital(hospitalId: string): Promise<any[]>;
+  getHealthRecordById(id: string): Promise<HealthRecord | undefined>;
   updateHealthRecord(id: string, data: Partial<HealthRecord>): Promise<HealthRecord>;
   
   // Doctor Notes
@@ -176,6 +177,11 @@ export class DatabaseStorage implements IStorage {
 
   async getRecentRecordsByHospital(hospitalId: string): Promise<any[]> {
     return await HealthRecords.find({ hospitalId }).sort({ createdAt: -1 }).limit(10).lean();
+  }
+
+  async getHealthRecordById(id: string): Promise<HealthRecord | undefined> {
+    const record = await HealthRecords.findOne({ id }).lean();
+    return record as unknown as HealthRecord | undefined;
   }
 
   async updateHealthRecord(id: string, data: Partial<HealthRecord>): Promise<HealthRecord> {

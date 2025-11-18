@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Upload, Plus, Hospital as HospitalIcon, Clock, AlertCircle } from "lucide-react";
+import { Upload, Plus, Hospital as HospitalIcon, Clock, AlertCircle, Edit, Search, Download } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,13 +8,19 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { getAuthUser, clearAuthUser } from "@/lib/auth";
+import { generatePatientHistoryPDF } from "@/lib/pdf-generator";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { useLocation } from "wouter";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Skeleton } from "@/components/ui/skeleton";
+import { RiskBadge } from "@/components/risk-badge";
 
 type UploadFormData = {
   patientId: string;
@@ -26,6 +32,45 @@ type UploadFormData = {
   prescription: string;
   riskLevel: "low" | "medium" | "high" | "critical";
   emergencyWarnings: string;
+};
+
+type EditFormData = {
+  id: string;
+  patientId: string;
+  doctorId: string;
+  dateTime: string;
+  diseaseName: string;
+  diseaseDescription: string;
+  treatment: string;
+  prescription: string;
+  riskLevel: "low" | "medium" | "high" | "critical";
+  emergencyWarnings: string;
+};
+
+type PatientWithRecords = {
+  id: string;
+  patientId: string;
+  name: string;
+  age?: number;
+  gender?: string;
+  bloodGroup?: string;
+  phone?: string;
+  email?: string;
+  address?: string;
+  emergencyContact?: string;
+  profileImage?: string;
+  healthRecords: Array<{
+    id: string;
+    dateTime: string;
+    diseaseName: string;
+    diseaseDescription: string;
+    treatment?: string;
+    prescription?: string;
+    riskLevel: string;
+    emergencyWarnings?: string;
+    hospital: { name: string; location: string };
+    doctor: { name: string; specialization?: string };
+  }>;
 };
 
 export default function HospitalDashboard() {
@@ -43,6 +88,11 @@ export default function HospitalDashboard() {
     riskLevel: "low",
     emergencyWarnings: "",
   });
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editFormData, setEditFormData] = useState<EditFormData | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchType, setSearchType] = useState<"id" | "name" | "phone">("name");
+  const [selectedPatient, setSelectedPatient] = useState<PatientWithRecords | null>(null);
 
   const { data: patients } = useQuery<any[]>({
     queryKey: ["/api/patients/all"],
@@ -57,6 +107,11 @@ export default function HospitalDashboard() {
   const { data: recentRecords } = useQuery<any[]>({
     queryKey: [`/api/health-records/recent?hospitalId=${user?.roleId}`],
     enabled: !!user,
+  });
+
+  const { data: searchResults, isLoading: isSearching } = useQuery<PatientWithRecords[]>({
+    queryKey: [`/api/patients/search?q=${searchQuery}&type=${searchType}`],
+    enabled: searchQuery.length > 0,
   });
 
   const createRecordMutation = useMutation({
@@ -95,6 +150,34 @@ export default function HospitalDashboard() {
     },
   });
 
+  const editRecordMutation = useMutation({
+    mutationFn: async (data: EditFormData) => {
+      const { id, ...updateData } = data;
+      return await apiRequest("PATCH", `/api/health-records/${id}`, updateData);
+    },
+    onSuccess: () => {
+      toast({
+        title: "Record updated successfully",
+        description: "Patient health record has been updated.",
+      });
+      setIsEditModalOpen(false);
+      setEditFormData(null);
+      queryClient.invalidateQueries({
+        predicate: (query) => {
+          const key0 = (query as any).queryKey?.[0];
+          return typeof key0 === 'string' && key0.startsWith('/api/health-records/recent');
+        }
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Update failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.patientId || !formData.doctorId || !formData.diseaseName || !formData.diseaseDescription) {
@@ -111,6 +194,42 @@ export default function HospitalDashboard() {
   const handleLogout = () => {
     clearAuthUser();
     navigate("/");
+  };
+
+  const handleEditRecord = (record: any) => {
+    setEditFormData({
+      id: record.id,
+      patientId: record.patientId,
+      doctorId: record.doctorId,
+      dateTime: new Date(record.dateTime).toISOString().slice(0, 16),
+      diseaseName: record.diseaseName,
+      diseaseDescription: record.diseaseDescription,
+      treatment: record.treatment || "",
+      prescription: record.prescription || "",
+      riskLevel: record.riskLevel,
+      emergencyWarnings: record.emergencyWarnings || "",
+    });
+    setIsEditModalOpen(true);
+  };
+
+  const handleEditSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editFormData) return;
+    editRecordMutation.mutate(editFormData);
+  };
+
+  const handleDownloadPDF = () => {
+    if (selectedPatient) {
+      generatePatientHistoryPDF(
+        selectedPatient,
+        selectedPatient.healthRecords,
+        `${selectedPatient.name}-health-history.pdf`
+      );
+      toast({
+        title: "PDF Downloaded",
+        description: "Patient history has been saved",
+      });
+    }
   };
 
   if (!user || user.role !== "hospital") {
@@ -149,6 +268,175 @@ export default function HospitalDashboard() {
       </header>
 
       <main className="container mx-auto px-6 py-8 space-y-8">
+        <Card>
+          <CardHeader>
+            <CardTitle>Patient Search</CardTitle>
+            <CardDescription>Search by patient ID, name, or phone number</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <Tabs value={searchType} onValueChange={(v) => setSearchType(v as typeof searchType)}>
+              <TabsList className="grid w-full grid-cols-3">
+                <TabsTrigger value="name">Name</TabsTrigger>
+                <TabsTrigger value="id">Patient ID</TabsTrigger>
+                <TabsTrigger value="phone">Phone</TabsTrigger>
+              </TabsList>
+            </Tabs>
+
+            <div className="relative">
+              <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder={`Search by ${searchType}...`}
+                className="pl-10"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+            </div>
+
+            {isSearching && (
+              <div className="space-y-3">
+                <Skeleton className="h-20 w-full" />
+                <Skeleton className="h-20 w-full" />
+              </div>
+            )}
+
+            {searchResults && searchResults.length > 0 && (
+              <div className="space-y-2">
+                {searchResults.map((patient: PatientWithRecords) => (
+                  <Card
+                    key={patient.id}
+                    className="cursor-pointer hover-elevate"
+                    onClick={() => setSelectedPatient(patient)}
+                  >
+                    <CardContent className="p-4 flex items-center justify-between">
+                      <div className="flex items-center gap-4">
+                        <Avatar>
+                          <AvatarImage src={patient.profileImage || undefined} />
+                          <AvatarFallback>{patient.name.charAt(0)}</AvatarFallback>
+                        </Avatar>
+                        <div>
+                          <h3 className="font-semibold">{patient.name}</h3>
+                          <p className="text-sm text-muted-foreground font-mono">{patient.patientId}</p>
+                        </div>
+                      </div>
+                      <Badge variant="outline">{patient.healthRecords?.length || 0} records</Badge>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+
+            {searchQuery && searchResults && searchResults.length === 0 && !isSearching && (
+              <div className="text-center py-8 text-muted-foreground">
+                No patients found matching "{searchQuery}"
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {selectedPatient && (
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <Avatar className="h-16 w-16">
+                    <AvatarImage src={selectedPatient.profileImage || undefined} />
+                    <AvatarFallback className="text-xl">{selectedPatient.name.charAt(0)}</AvatarFallback>
+                  </Avatar>
+                  <div>
+                    <CardTitle className="text-2xl">{selectedPatient.name}</CardTitle>
+                    <CardDescription className="font-mono">{selectedPatient.patientId}</CardDescription>
+                  </div>
+                </div>
+                <Button
+                  variant="outline"
+                  onClick={handleDownloadPDF}
+                >
+                  <Download className="h-4 w-4 mr-2" />
+                  Download PDF
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                <div>
+                  <p className="text-muted-foreground">Age</p>
+                  <p className="font-medium">{selectedPatient.age || "N/A"}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">Gender</p>
+                  <p className="font-medium">{selectedPatient.gender || "N/A"}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">Blood Group</p>
+                  <p className="font-medium">{selectedPatient.bloodGroup || "N/A"}</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground">Phone</p>
+                  <p className="font-medium">{selectedPatient.phone || "N/A"}</p>
+                </div>
+              </div>
+
+              <Separator />
+
+              <div>
+                <h3 className="text-lg font-semibold mb-4">Medical History</h3>
+                {selectedPatient.healthRecords && selectedPatient.healthRecords.length > 0 ? (
+                  <div className="space-y-4">
+                    {selectedPatient.healthRecords.map((record) => (
+                      <Card key={record.id}>
+                        <CardContent className="p-6 space-y-4">
+                          <div className="flex items-start justify-between">
+                            <div className="space-y-1">
+                              <div className="flex items-center gap-2">
+                                <h4 className="font-semibold text-lg">{record.diseaseName}</h4>
+                                <RiskBadge level={record.riskLevel as any} />
+                              </div>
+                              <p className="text-sm text-muted-foreground">
+                                {new Date(record.dateTime).toLocaleString()}
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="space-y-2 text-sm">
+                            <div>
+                              <span className="font-medium">Hospital: </span>
+                              {record.hospital.name} ({record.hospital.location})
+                            </div>
+                            <div>
+                              <span className="font-medium">Doctor: </span>
+                              {record.doctor.name} - {record.doctor.specialization || "General"}
+                            </div>
+                            <div>
+                              <span className="font-medium">Description: </span>
+                              {record.diseaseDescription}
+                            </div>
+                            {record.treatment && (
+                              <div>
+                                <span className="font-medium">Treatment: </span>
+                                {record.treatment}
+                              </div>
+                            )}
+                            {record.emergencyWarnings && (
+                              <div className="bg-destructive/10 border border-destructive/20 rounded-md p-3 mt-2">
+                                <span className="font-medium text-destructive">⚠ Warning: </span>
+                                {record.emergencyWarnings}
+                              </div>
+                            )}
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-8 text-muted-foreground">
+                    No medical records found
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           <div className="lg:col-span-2">
             <Card>
@@ -366,11 +654,22 @@ export default function HospitalDashboard() {
                           </div>
                           {record.isEditable && record.editableUntil && (
                             <div className="bg-primary/10 border border-primary/20 rounded-md p-2">
-                              <div className="flex items-center gap-2 text-xs">
-                                <Clock className="h-3 w-3 text-primary" />
-                                <span className="text-primary font-medium">
-                                  Editable for: {Math.max(0, Math.floor((new Date(record.editableUntil).getTime() - Date.now()) / 60000))} min
-                                </span>
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2 text-xs">
+                                  <Clock className="h-3 w-3 text-primary" />
+                                  <span className="text-primary font-medium">
+                                    Editable for: {Math.max(0, Math.floor((new Date(record.editableUntil).getTime() - Date.now()) / 60000))} min
+                                  </span>
+                                </div>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => handleEditRecord(record)}
+                                  className="h-6 px-2 text-xs"
+                                >
+                                  <Edit className="h-3 w-3 mr-1" />
+                                  Edit
+                                </Button>
                               </div>
                             </div>
                           )}
@@ -415,6 +714,160 @@ export default function HospitalDashboard() {
           </div>
         </div>
       </main>
+
+      <Dialog open={isEditModalOpen} onOpenChange={setIsEditModalOpen}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Edit Health Record</DialogTitle>
+            <DialogDescription>
+              Update the patient health record details.
+            </DialogDescription>
+          </DialogHeader>
+          {editFormData && (
+            <form onSubmit={handleEditSubmit} className="space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="edit-patientId">Patient *</Label>
+                  <Select
+                    value={editFormData.patientId}
+                    onValueChange={(value) => setEditFormData({ ...editFormData, patientId: value })}
+                  >
+                    <SelectTrigger id="edit-patientId">
+                      <SelectValue placeholder="Select patient" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {patients?.map((patient: any) => (
+                        <SelectItem key={patient.id} value={patient.id}>
+                          {patient.name} ({patient.patientId})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div>
+                  <Label htmlFor="edit-doctorId">Treating Doctor *</Label>
+                  <Select
+                    value={editFormData.doctorId}
+                    onValueChange={(value) => setEditFormData({ ...editFormData, doctorId: value })}
+                  >
+                    <SelectTrigger id="edit-doctorId">
+                      <SelectValue placeholder="Select doctor" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {doctors?.map((doctor: any) => (
+                        <SelectItem key={doctor.id} value={doctor.id}>
+                          {doctor.name} ({doctor.specialization || "General"})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="edit-dateTime">Date & Time *</Label>
+                  <Input
+                    id="edit-dateTime"
+                    type="datetime-local"
+                    value={editFormData.dateTime}
+                    onChange={(e) => setEditFormData({ ...editFormData, dateTime: e.target.value })}
+                  />
+                </div>
+
+                <div>
+                  <Label htmlFor="edit-riskLevel">Risk Level *</Label>
+                  <Select
+                    value={editFormData.riskLevel}
+                    onValueChange={(value: any) => setEditFormData({ ...editFormData, riskLevel: value })}
+                  >
+                    <SelectTrigger id="edit-riskLevel">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="low">Low Risk</SelectItem>
+                      <SelectItem value="medium">Medium Risk</SelectItem>
+                      <SelectItem value="high">High Risk</SelectItem>
+                      <SelectItem value="critical">Critical</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div>
+                <Label htmlFor="edit-diseaseName">Disease/Condition Name *</Label>
+                <Input
+                  id="edit-diseaseName"
+                  placeholder="e.g., Acute Bronchitis"
+                  value={editFormData.diseaseName}
+                  onChange={(e) => setEditFormData({ ...editFormData, diseaseName: e.target.value })}
+                />
+              </div>
+
+              <div>
+                <Label htmlFor="edit-diseaseDescription">Description *</Label>
+                <Textarea
+                  id="edit-diseaseDescription"
+                  placeholder="Detailed description of the condition, symptoms, and findings..."
+                  value={editFormData.diseaseDescription}
+                  onChange={(e) => setEditFormData({ ...editFormData, diseaseDescription: e.target.value })}
+                  rows={4}
+                />
+              </div>
+
+              <div>
+                <Label htmlFor="edit-treatment">Treatment</Label>
+                <Textarea
+                  id="edit-treatment"
+                  placeholder="Treatment plan and procedures..."
+                  value={editFormData.treatment}
+                  onChange={(e) => setEditFormData({ ...editFormData, treatment: e.target.value })}
+                  rows={3}
+                />
+              </div>
+
+              <div>
+                <Label htmlFor="edit-prescription">Prescription</Label>
+                <Textarea
+                  id="edit-prescription"
+                  placeholder="Medications prescribed..."
+                  value={editFormData.prescription}
+                  onChange={(e) => setEditFormData({ ...editFormData, prescription: e.target.value })}
+                  rows={3}
+                />
+              </div>
+
+              <div>
+                <Label htmlFor="edit-emergencyWarnings">Emergency Warnings</Label>
+                <Textarea
+                  id="edit-emergencyWarnings"
+                  placeholder="Any critical warnings or alerts..."
+                  value={editFormData.emergencyWarnings}
+                  onChange={(e) => setEditFormData({ ...editFormData, emergencyWarnings: e.target.value })}
+                  rows={2}
+                />
+              </div>
+
+              <div className="flex justify-end gap-3">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setIsEditModalOpen(false)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  disabled={editRecordMutation.isPending}
+                >
+                  {editRecordMutation.isPending ? "Updating..." : "Update Record"}
+                </Button>
+              </div>
+            </form>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

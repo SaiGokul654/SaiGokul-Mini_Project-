@@ -214,6 +214,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.patch("/api/health-records/:id", async (req, res) => {
     try {
       const { id } = req.params;
+      const record = await storage.getHealthRecordById(id);
+      if (!record) {
+        return res.status(404).json({ message: "Record not found" });
+      }
+
+      // Check if record is still editable
+      if (!record.isEditable || (record.editableUntil && new Date() > record.editableUntil)) {
+        return res.status(403).json({ message: "Record is no longer editable (1 hour limit exceeded)" });
+      }
+
       const updated = await storage.updateHealthRecord(id, req.body);
       res.json(updated);
     } catch (error: any) {

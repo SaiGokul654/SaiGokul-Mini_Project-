@@ -1,6 +1,6 @@
 import OpenAI from "openai";
 
-// The newest OpenAI model is "gpt-5" (per project notes).
+// The newest OpenAI model is "gpt-4" (updated from gpt-5 which doesn't exist)
 const apiKey = process.env.OPENAI_API_KEY;
 
 let openai: OpenAI | null = null;
@@ -17,7 +17,7 @@ export async function generatePatientSummary(patientHistory: string): Promise<st
 
   try {
     const response = await openai.chat.completions.create({
-      model: "gpt-5",
+      model: "gpt-4",
       messages: [
         {
           role: "system",
@@ -28,7 +28,7 @@ export async function generatePatientSummary(patientHistory: string): Promise<st
           content: `Summarize this patient's medical history:\n\n${patientHistory}`
         }
       ],
-      max_completion_tokens: 2048,
+      max_tokens: 2048,
     });
 
     return response.choices[0].message.content || "Unable to generate summary";
