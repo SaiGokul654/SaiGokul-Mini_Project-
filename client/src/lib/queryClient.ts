@@ -2,7 +2,7 @@ import { QueryClient, QueryFunction } from "@tanstack/react-query";
 
 // UPDATE THIS URL AFTER DEPLOYING TO RENDER
 // Example: "https://healthchain-api.onrender.com"
-const BASE_URL = "";
+const BASE_URL = "https://mediscanai-1-um6r.onrender.com";
 
 async function throwIfResNotOk(res: Response) {
   if (!res.ok) {

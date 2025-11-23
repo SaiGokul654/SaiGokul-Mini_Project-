@@ -16,6 +16,7 @@ import {
 } from "@shared/lab-prediction-schema";
 import { db } from "./db";
 import bcrypt from "bcryptjs";
+import { randomUUID } from "crypto";
 
 export interface IStorage {
   // Auth
@@ -58,6 +59,7 @@ export interface IStorage {
   createLabResult(labResult: InsertLabResult): Promise<LabResult>;
   getPatientLabResults(patientId: string, filters?: { testType?: string; startDate?: Date; endDate?: Date }): Promise<LabResult[]>;
   getLabResultById(id: string): Promise<LabResult | undefined>;
+  updateLabResult(id: string, data: Partial<LabResult>): Promise<LabResult>;
   getLabTrends(patientId: string, testName: string): Promise<any>;
 
   // Password Reset
@@ -69,7 +71,11 @@ export interface IStorage {
 export class DatabaseStorage implements IStorage {
   async createUser(insertUser: InsertUser): Promise<User> {
     const hashedPassword = await bcrypt.hash(insertUser.password, 10);
-    const created = await Users.create({ ...insertUser, password: hashedPassword });
+    const created = await Users.create({
+      ...insertUser,
+      id: insertUser.id || randomUUID(),
+      password: hashedPassword
+    });
     return created as unknown as User;
   }
 
@@ -333,6 +339,20 @@ export class DatabaseStorage implements IStorage {
   async getLabResultById(id: string): Promise<LabResult | undefined> {
     const labResult = await LabResults.findOne({ id }).lean();
     return labResult as unknown as LabResult | undefined;
+  }
+
+  async updateLabResult(id: string, data: Partial<LabResult>): Promise<LabResult> {
+    const updated = await LabResults.findOneAndUpdate(
+      { id },
+      { ...data, updatedAt: new Date() },
+      { new: true }
+    ).lean();
+
+    if (!updated) {
+      throw new Error("Lab result not found");
+    }
+
+    return updated as unknown as LabResult;
   }
 
   async getLabTrends(patientId: string, testName: string): Promise<any> {

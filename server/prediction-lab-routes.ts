@@ -212,4 +212,22 @@ export function registerLabRoutes(app: Express) {
             res.status(500).json({ message: error.message || "Failed to fetch lab result" });
         }
     });
+
+    // Update lab result
+    app.patch("/api/lab-results/:id", async (req, res) => {
+        try {
+            const { id } = req.params;
+            const updateData = req.body;
+
+            // Basic validation - ensure ID matches if provided in body
+            if (updateData.id && updateData.id !== id) {
+                return res.status(400).json({ message: "ID mismatch" });
+            }
+
+            const updatedResult = await storage.updateLabResult(id, updateData);
+            res.json({ labResult: updatedResult });
+        } catch (error: any) {
+            res.status(500).json({ message: error.message || "Failed to update lab result" });
+        }
+    });
 }

@@ -150,6 +150,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.get("/api/patients/:id/details", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const patient = await storage.getPatientWithRecords(id);
+      if (!patient) {
+        return res.status(404).json({ message: "Patient not found" });
+      }
+      res.json(patient);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message || "Failed to fetch patient details" });
+    }
+  });
+
   // Doctor routes
   app.get("/api/doctors/stats", async (req, res) => {
     try {

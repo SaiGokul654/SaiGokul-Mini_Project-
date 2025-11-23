@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Search, Download, FileText, Sparkles, UserCircle, Camera, ClipboardList, Activity } from "lucide-react";
+import { Search, Download, FileText, Sparkles, UserCircle, Camera, ClipboardList, Activity, Calendar, Clock, AlertCircle, Hospital as HospitalIcon } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -18,9 +18,10 @@ import { generatePatientHistoryPDF, generateAISummaryPDF } from "@/lib/pdf-gener
 import { RiskBadge } from "@/components/risk-badge";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { useLocation } from "wouter";
-import { Patient, HealthRecord, Hospital, Doctor } from "@shared/schema";
+import type { Patient, HealthRecord, Hospital, Doctor } from "@shared/schema";
 import { LabResults } from "@/components/LabResults";
 import { PredictionDashboard } from "@/components/PredictionDashboard";
+import { motion } from "framer-motion";
 
 type PatientWithRecords = Patient & {
   healthRecords: Array<HealthRecord & { hospital: Hospital; doctor: Doctor }>;
@@ -34,6 +35,8 @@ export default function DoctorDashboard() {
   const [searchType, setSearchType] = useState<"id" | "name" | "phone">("name");
   const [selectedPatient, setSelectedPatient] = useState<PatientWithRecords | null>(null);
   const [noteText, setNoteText] = useState("");
+  const [summaryData, setSummaryData] = useState<{ summary: string } | null>(null);
+  const [isSummaryModalOpen, setIsSummaryModalOpen] = useState(false);
   const [showFaceRecognition, setShowFaceRecognition] = useState(false);
 
   const { data: searchResults, isLoading: isSearching } = useQuery<PatientWithRecords[]>({
@@ -47,7 +50,7 @@ export default function DoctorDashboard() {
     totalConsultations: number;
     criticalCases: number;
   }>({
-    queryKey: [`/api/doctors/stats?doctorId=${user?.roleId}`], // Use roleId which maps to Doctor ID
+    queryKey: [`/api/doctors/stats?doctorId=${user?.roleId}`],
     enabled: !!user?.roleId
   });
 
@@ -58,12 +61,10 @@ export default function DoctorDashboard() {
     onSuccess: (data) => {
       toast({
         title: "AI Summary Generated",
-        description: "Summary is ready to download",
+        description: "Review the summary before downloading",
       });
-
-      if (selectedPatient) {
-        generateAISummaryPDF(selectedPatient.name, data.summary);
-      }
+      setSummaryData(data);
+      setIsSummaryModalOpen(true);
     },
     onError: (error: Error) => {
       toast({
@@ -88,7 +89,6 @@ export default function DoctorDashboard() {
         description: "Your note has been saved successfully",
       });
       setNoteText("");
-      // Invalidate all search queries by matching the pattern
       queryClient.invalidateQueries({
         predicate: (query) => {
           const key0 = (query as any).queryKey?.[0];
@@ -157,341 +157,505 @@ export default function DoctorDashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      <header className="border-b bg-card">
-        <div className="container mx-auto px-6 py-4 flex items-center justify-between">
+    <div className="min-h-screen bg-background/50">
+      <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+        <div className="container mx-auto px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <ClipboardList className="h-8 w-8 text-primary" />
+            <div className="bg-primary/10 p-2 rounded-lg">
+              <ClipboardList className="h-6 w-6 text-primary" />
+            </div>
             <div>
-              <h1 className="text-2xl font-bold">Doctor Portal</h1>
-              <p className="text-sm text-muted-foreground">Welcome, Dr. {user.name}</p>
+              <h1 className="text-lg font-bold tracking-tight">Doctor Portal</h1>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-3 px-4 py-2 bg-muted/50 rounded-full">
+              <Avatar className="h-8 w-8 border-2 border-background">
+                <AvatarFallback className="bg-primary/10 text-primary">
+                  {user.name.charAt(0)}
+                </AvatarFallback>
+              </Avatar>
+              <div className="text-sm">
+                <p className="font-medium leading-none">Dr. {user.name}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Cardiology</p>
+              </div>
+            </div>
             <ThemeToggle />
-            <Button variant="outline" onClick={handleLogout} data-testid="button-logout">
-              Logout
+            <Button variant="ghost" size="icon" onClick={handleLogout} className="text-muted-foreground hover:text-destructive">
+              <AlertCircle className="h-5 w-5" />
             </Button>
           </div>
         </div>
       </header>
 
       <main className="container mx-auto px-6 py-8 space-y-8">
+        {/* Welcome Section */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="flex flex-col md:flex-row gap-6 items-start md:items-center justify-between"
+        >
+          <div>
+            <h2 className="text-3xl font-bold tracking-tight text-foreground">Dashboard Overview</h2>
+            <p className="text-muted-foreground mt-1">Track your patients and consultations in real-time.</p>
+          </div>
+          <div className="flex items-center gap-2 text-sm text-muted-foreground bg-card border px-4 py-2 rounded-full shadow-sm">
+            <Calendar className="h-4 w-4" />
+            <span>{new Date().toLocaleDateString(undefined, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</span>
+          </div>
+        </motion.div>
+
+        {/* Stats Grid */}
         {stats && (
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">My Patients</CardTitle>
-                <UserCircle className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold" data-testid="text-total-patients">{stats.totalPatients || 0}</div>
-                <p className="text-xs text-muted-foreground">Unique patients treated</p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Consultations</CardTitle>
-                <ClipboardList className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold" data-testid="text-total-consultations">{stats.totalConsultations || 0}</div>
-                <p className="text-xs text-muted-foreground">Total records created</p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Recent Cases</CardTitle>
-                <FileText className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold" data-testid="text-recent-cases">{stats.recentCases || 0}</div>
-                <p className="text-xs text-muted-foreground">Last 30 days</p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Critical Cases</CardTitle>
-                <Activity className="h-4 w-4 text-destructive" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold text-destructive" data-testid="text-critical-cases">{stats.criticalCases || 0}</div>
-                <p className="text-xs text-muted-foreground">High risk patients (30d)</p>
-              </CardContent>
-            </Card>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.1 }}
+            >
+              <Card className="hover-elevate transition-all duration-300 border-l-4 border-l-primary">
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">Total Patients</CardTitle>
+                  <UserCircle className="h-4 w-4 text-primary" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold" data-testid="text-total-patients">{stats.totalPatients || 0}</div>
+                  <p className="text-xs text-muted-foreground mt-1">+2 from last week</p>
+                </CardContent>
+              </Card>
+            </motion.div>
+
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.2 }}
+            >
+              <Card className="hover-elevate transition-all duration-300 border-l-4 border-l-blue-500">
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">Consultations</CardTitle>
+                  <ClipboardList className="h-4 w-4 text-blue-500" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold" data-testid="text-total-consultations">{stats.totalConsultations || 0}</div>
+                  <p className="text-xs text-muted-foreground mt-1">Total records created</p>
+                </CardContent>
+              </Card>
+            </motion.div>
+
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.3 }}
+            >
+              <Card className="hover-elevate transition-all duration-300 border-l-4 border-l-green-500">
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">Recent Cases</CardTitle>
+                  <Clock className="h-4 w-4 text-green-500" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold" data-testid="text-recent-cases">{stats.recentCases || 0}</div>
+                  <p className="text-xs text-muted-foreground mt-1">In the last 30 days</p>
+                </CardContent>
+              </Card>
+            </motion.div>
+
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.4 }}
+            >
+              <Card className="hover-elevate transition-all duration-300 border-l-4 border-l-destructive">
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">Critical Cases</CardTitle>
+                  <Activity className="h-4 w-4 text-destructive" />
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold text-destructive" data-testid="text-critical-cases">{stats.criticalCases || 0}</div>
+                  <p className="text-xs text-muted-foreground mt-1">Requires immediate attention</p>
+                </CardContent>
+              </Card>
+            </motion.div>
           </div>
         )}
 
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Patient Search</CardTitle>
-            <CardDescription>Search by patient ID, name, or phone number</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <Tabs value={searchType} onValueChange={(v) => setSearchType(v as typeof searchType)}>
-              <TabsList className="grid w-full grid-cols-3">
-                <TabsTrigger value="name" data-testid="tab-search-name">Name</TabsTrigger>
-                <TabsTrigger value="id" data-testid="tab-search-id">Patient ID</TabsTrigger>
-                <TabsTrigger value="phone" data-testid="tab-search-phone">Phone</TabsTrigger>
-              </TabsList>
-            </Tabs>
-
-            <div className="flex gap-2">
-              <div className="relative flex-1">
-                <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder={`Search by ${searchType}...`}
-                  className="pl-10"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  data-testid="input-patient-search"
-                />
-              </div>
-              <Dialog open={showFaceRecognition} onOpenChange={setShowFaceRecognition}>
-                <DialogTrigger asChild>
-                  <Button variant="outline" data-testid="button-face-recognition">
-                    <Camera className="h-4 w-4 mr-2" />
-                    Face Recognition
-                  </Button>
-                </DialogTrigger>
-                <DialogContent>
-                  <DialogHeader>
-                    <DialogTitle>Face Recognition Demo</DialogTitle>
-                    <DialogDescription>
-                      This is a demo feature. In production, this would use live camera feed.
-                    </DialogDescription>
-                  </DialogHeader>
-                  <div className="space-y-4">
-                    <div className="bg-muted rounded-lg h-64 flex items-center justify-center">
-                      <Camera className="h-16 w-16 text-muted-foreground" />
-                    </div>
-                    <p className="text-sm text-muted-foreground text-center">
-                      Demo: Click "Simulate Recognition" to load a sample patient
-                    </p>
-                    <Button
-                      className="w-full"
-                      onClick={() => faceRecognitionMutation.mutate("demo-image")}
-                      disabled={faceRecognitionMutation.isPending}
-                      data-testid="button-simulate-recognition"
-                    >
-                      {faceRecognitionMutation.isPending ? "Processing..." : "Simulate Recognition"}
-                    </Button>
-                  </div>
-                </DialogContent>
-              </Dialog>
-            </div>
-
-            {isSearching && (
-              <div className="space-y-3">
-                <Skeleton className="h-20 w-full" />
-                <Skeleton className="h-20 w-full" />
-              </div>
-            )}
-
-            {searchResults && searchResults.length > 0 && (
-              <div className="space-y-2">
-                {searchResults.map((patient: PatientWithRecords) => (
-                  <Card
-                    key={patient.id}
-                    className="cursor-pointer hover-elevate"
-                    onClick={() => setSelectedPatient(patient)}
-                    data-testid={`card-patient-${patient.id}`}
-                  >
-                    <CardContent className="p-4 flex items-center justify-between">
-                      <div className="flex items-center gap-4">
-                        <Avatar>
-                          <AvatarImage src={patient.profileImage || undefined} />
-                          <AvatarFallback>{patient.name.charAt(0)}</AvatarFallback>
-                        </Avatar>
-                        <div>
-                          <h3 className="font-semibold">{patient.name}</h3>
-                          <p className="text-sm text-muted-foreground font-mono">{patient.patientId}</p>
-                        </div>
-                      </div>
-                      <Badge variant="outline">{patient.healthRecords?.length || 0} records</Badge>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            )}
-
-            {searchQuery && searchResults && searchResults.length === 0 && !isSearching && (
-              <div className="text-center py-8 text-muted-foreground">
-                No patients found matching "{searchQuery}"
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {
-          selectedPatient && (
-            <Card>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          {/* Left Column: Search & List */}
+          <div className="lg:col-span-1 space-y-6">
+            <Card className="h-full border-none shadow-lg bg-card/50 backdrop-blur-sm">
               <CardHeader>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-4">
-                    <Avatar className="h-16 w-16">
-                      <AvatarImage src={selectedPatient.profileImage || undefined} />
-                      <AvatarFallback className="text-xl">{selectedPatient.name.charAt(0)}</AvatarFallback>
-                    </Avatar>
-                    <div>
-                      <CardTitle className="text-2xl">{selectedPatient.name}</CardTitle>
-                      <CardDescription className="font-mono">{selectedPatient.patientId}</CardDescription>
-                    </div>
-                  </div>
-                  <div className="flex gap-2">
-                    <Button
-                      variant="outline"
-                      onClick={handleDownloadPDF}
-                      data-testid="button-download-pdf"
-                    >
-                      <Download className="h-4 w-4 mr-2" />
-                      Download PDF
-                    </Button>
-                    <Button
-                      onClick={handleAISummary}
-                      disabled={aiSummaryMutation.isPending}
-                      data-testid="button-ai-summary"
-                    >
-                      <Sparkles className="h-4 w-4 mr-2" />
-                      {aiSummaryMutation.isPending ? "Generating..." : "AI Summary"}
-                    </Button>
-                  </div>
-                </div>
+                <CardTitle className="flex items-center gap-2">
+                  <Search className="h-5 w-5 text-primary" />
+                  Find Patient
+                </CardTitle>
+                <CardDescription>Search by ID, name, or phone</CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                  <div>
-                    <p className="text-muted-foreground">Age</p>
-                    <p className="font-medium">{selectedPatient.age || "N/A"}</p>
+                <Tabs value={searchType} onValueChange={(v) => setSearchType(v as typeof searchType)} className="w-full">
+                  <TabsList className="grid w-full grid-cols-3 mb-4">
+                    <TabsTrigger value="name">Name</TabsTrigger>
+                    <TabsTrigger value="id">ID</TabsTrigger>
+                    <TabsTrigger value="phone">Phone</TabsTrigger>
+                  </TabsList>
+                </Tabs>
+
+                <div className="space-y-4">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      placeholder={`Search by ${searchType}...`}
+                      className="pl-10 h-11 bg-background"
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                    />
                   </div>
-                  <div>
-                    <p className="text-muted-foreground">Gender</p>
-                    <p className="font-medium">{selectedPatient.gender || "N/A"}</p>
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground">Blood Group</p>
-                    <p className="font-medium">{selectedPatient.bloodGroup || "N/A"}</p>
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground">Phone</p>
-                    <p className="font-medium">{selectedPatient.phone || "N/A"}</p>
-                  </div>
+
+                  <Dialog open={showFaceRecognition} onOpenChange={setShowFaceRecognition}>
+                    <DialogTrigger asChild>
+                      <Button variant="outline" className="w-full h-11 border-dashed">
+                        <Camera className="h-4 w-4 mr-2" />
+                        Scan Face ID
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent>
+                      <DialogHeader>
+                        <DialogTitle>Face Recognition Demo</DialogTitle>
+                        <DialogDescription>
+                          This is a demo feature. In production, this would use live camera feed.
+                        </DialogDescription>
+                      </DialogHeader>
+                      <div className="space-y-4">
+                        <div className="bg-muted rounded-lg h-64 flex items-center justify-center border-2 border-dashed">
+                          <Camera className="h-16 w-16 text-muted-foreground/50" />
+                        </div>
+                        <Button
+                          className="w-full"
+                          onClick={() => faceRecognitionMutation.mutate("demo-image")}
+                          disabled={faceRecognitionMutation.isPending}
+                        >
+                          {faceRecognitionMutation.isPending ? "Scanning..." : "Simulate Scan"}
+                        </Button>
+                      </div>
+                    </DialogContent>
+                  </Dialog>
                 </div>
 
-                <Separator />
-
-                <Tabs defaultValue="history" className="w-full">
-                  <TabsList className="grid w-full grid-cols-3">
-                    <TabsTrigger value="history">Medical History</TabsTrigger>
-                    <TabsTrigger value="labs">Lab Results</TabsTrigger>
-                    <TabsTrigger value="predictions">Predictions</TabsTrigger>
-                  </TabsList>
-
-                  <TabsContent value="history" className="mt-6">
-                    <div>
-                      <h3 className="text-lg font-semibold mb-4">Medical History</h3>
-                      {selectedPatient.healthRecords && selectedPatient.healthRecords.length > 0 ? (
-                        <div className="space-y-4">
-                          {selectedPatient.healthRecords.map((record) => (
-                            <Card key={record.id}>
-                              <CardContent className="p-6 space-y-4">
-                                <div className="flex items-start justify-between">
-                                  <div className="space-y-1">
-                                    <div className="flex items-center gap-2">
-                                      <h4 className="font-semibold text-lg">{record.diseaseName}</h4>
-                                      <RiskBadge level={record.riskLevel as any} />
-                                    </div>
-                                    <p className="text-sm text-muted-foreground">
-                                      {new Date(record.dateTime).toLocaleString()}
-                                    </p>
-                                  </div>
-                                </div>
-
-                                <div className="space-y-2 text-sm">
-                                  <div>
-                                    <span className="font-medium">Hospital: </span>
-                                    {record.hospital.name} ({record.hospital.location})
-                                  </div>
-                                  <div>
-                                    <span className="font-medium">Doctor: </span>
-                                    {record.doctor.name} - {record.doctor.specialization || "General"}
-                                  </div>
-                                  <div>
-                                    <span className="font-medium">Description: </span>
-                                    {record.diseaseDescription}
-                                  </div>
-                                  {record.treatment && (
-                                    <div>
-                                      <span className="font-medium">Treatment: </span>
-                                      {record.treatment}
-                                    </div>
-                                  )}
-                                  {record.emergencyWarnings && (
-                                    <div className="bg-destructive/10 border border-destructive/20 rounded-md p-3 mt-2">
-                                      <span className="font-medium text-destructive">⚠ Warning: </span>
-                                      {record.emergencyWarnings}
-                                    </div>
-                                  )}
-                                </div>
-
-                                {record.mediaFiles && record.mediaFiles.length > 0 && (
-                                  <div>
-                                    <p className="text-sm font-medium mb-2">Attached Files:</p>
-                                    <div className="flex flex-wrap gap-2">
-                                      {record.mediaFiles.map((file, idx) => (
-                                        <Badge key={idx} variant="secondary">
-                                          {file.name}
-                                        </Badge>
-                                      ))}
-                                    </div>
-                                  </div>
-                                )}
-
-                                <div className="pt-4">
-                                  <label className="text-sm font-medium">Add Note:</label>
-                                  <div className="flex gap-2 mt-2">
-                                    <Textarea
-                                      placeholder="Add your observations..."
-                                      value={noteText}
-                                      onChange={(e) => setNoteText(e.target.value)}
-                                      className="flex-1"
-                                      data-testid={`textarea-note-${record.id}`}
-                                    />
-                                    <Button
-                                      onClick={() => addNoteMutation.mutate({ recordId: record.id, note: noteText })}
-                                      disabled={!noteText || addNoteMutation.isPending}
-                                      data-testid={`button-add-note-${record.id}`}
-                                    >
-                                      Add
-                                    </Button>
-                                  </div>
-                                </div>
-                              </CardContent>
-                            </Card>
-                          ))}
-                        </div>
-                      ) : (
-                        <div className="text-center py-8 text-muted-foreground">
-                          No medical records found
-                        </div>
-                      )}
+                <div className="space-y-3 max-h-[500px] overflow-y-auto pr-2 custom-scrollbar">
+                  {isSearching && (
+                    <div className="space-y-3">
+                      {[1, 2, 3].map((i) => (
+                        <Skeleton key={i} className="h-20 w-full rounded-xl" />
+                      ))}
                     </div>
-                  </TabsContent>
+                  )}
 
-                  <TabsContent value="labs" className="mt-6">
-                    <LabResults patientId={selectedPatient.id} canUpload={false} />
-                  </TabsContent>
+                  {searchResults?.map((patient) => (
+                    <motion.div
+                      key={patient.id}
+                      initial={{ opacity: 0, x: -10 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      whileHover={{ scale: 1.02 }}
+                      transition={{ duration: 0.2 }}
+                    >
+                      <Card
+                        className={`cursor-pointer transition-all duration-200 border-l-4 ${selectedPatient?.id === patient.id
+                          ? "border-l-primary bg-primary/5 shadow-md"
+                          : "border-l-transparent hover:border-l-primary/50"
+                          }`}
+                        onClick={() => setSelectedPatient(patient)}
+                      >
+                        <CardContent className="p-4 flex items-center gap-4">
+                          <Avatar className="h-12 w-12 border-2 border-background shadow-sm">
+                            <AvatarImage src={patient.profileImage || undefined} />
+                            <AvatarFallback className="bg-primary/10 text-primary font-bold">
+                              {patient.name.charAt(0)}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div className="flex-1 min-w-0">
+                            <h3 className="font-semibold truncate">{patient.name}</h3>
+                            <p className="text-xs text-muted-foreground font-mono truncate">{patient.patientId}</p>
+                          </div>
+                          <Badge variant="secondary" className="shrink-0">
+                            {patient.healthRecords?.length || 0}
+                          </Badge>
+                        </CardContent>
+                      </Card>
+                    </motion.div>
+                  ))}
 
-                  <TabsContent value="predictions" className="mt-6">
-                    <PredictionDashboard patientId={selectedPatient.id} canGenerate={true} />
-                  </TabsContent>
-                </Tabs>
+                  {searchQuery && searchResults?.length === 0 && !isSearching && (
+                    <div className="text-center py-12 text-muted-foreground">
+                      <UserCircle className="h-12 w-12 mx-auto mb-3 opacity-20" />
+                      <p>No patients found</p>
+                    </div>
+                  )}
+                </div>
               </CardContent>
             </Card>
-          )
-        }
-      </main >
-    </div >
+          </div>
+
+          {/* Right Column: Patient Details */}
+          <div className="lg:col-span-2">
+            {selectedPatient ? (
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ duration: 0.3 }}
+                className="space-y-6"
+              >
+                <Card className="border-none shadow-lg bg-card/50 backdrop-blur-sm overflow-hidden">
+                  <div className="h-32 bg-gradient-to-r from-primary/20 to-accent/20" />
+                  <CardHeader className="relative pt-0">
+                    <div className="flex flex-col md:flex-row items-start md:items-end justify-between gap-4 -mt-12 px-2">
+                      <div className="flex items-end gap-6">
+                        <Avatar className="h-24 w-24 border-4 border-background shadow-xl">
+                          <AvatarImage src={selectedPatient.profileImage || undefined} />
+                          <AvatarFallback className="text-3xl bg-primary/10 text-primary">
+                            {selectedPatient.name.charAt(0)}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div className="mb-2">
+                          <CardTitle className="text-3xl font-bold">{selectedPatient.name}</CardTitle>
+                          <CardDescription className="font-mono text-base flex items-center gap-2">
+                            <Badge variant="outline" className="font-normal">ID: {selectedPatient.patientId}</Badge>
+                          </CardDescription>
+                        </div>
+                      </div>
+                      <div className="flex gap-2 mb-2 w-full md:w-auto">
+                        <Button variant="outline" onClick={handleDownloadPDF} className="flex-1 md:flex-none">
+                          <Download className="h-4 w-4 mr-2" />
+                          History PDF
+                        </Button>
+                        <Button
+                          onClick={handleAISummary}
+                          disabled={aiSummaryMutation.isPending}
+                          className="flex-1 md:flex-none bg-gradient-to-r from-primary to-accent hover:opacity-90 transition-opacity"
+                        >
+                          <Sparkles className="h-4 w-4 mr-2" />
+                          {aiSummaryMutation.isPending ? "Analyzing..." : "AI Summary"}
+                        </Button>
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-8 pt-6">
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                      <div className="p-4 rounded-xl bg-background/50 border shadow-sm">
+                        <p className="text-sm text-muted-foreground mb-1">Age</p>
+                        <p className="text-lg font-semibold">{selectedPatient.age || "N/A"}</p>
+                      </div>
+                      <div className="p-4 rounded-xl bg-background/50 border shadow-sm">
+                        <p className="text-sm text-muted-foreground mb-1">Gender</p>
+                        <p className="text-lg font-semibold capitalize">{selectedPatient.gender || "N/A"}</p>
+                      </div>
+                      <div className="p-4 rounded-xl bg-background/50 border shadow-sm">
+                        <p className="text-sm text-muted-foreground mb-1">Blood Group</p>
+                        <p className="text-lg font-semibold">{selectedPatient.bloodGroup || "N/A"}</p>
+                      </div>
+                      <div className="p-4 rounded-xl bg-background/50 border shadow-sm">
+                        <p className="text-sm text-muted-foreground mb-1">Contact</p>
+                        <p className="text-lg font-semibold">{selectedPatient.phone || "N/A"}</p>
+                      </div>
+                    </div>
+
+                    <Tabs defaultValue="history" className="w-full">
+                      <TabsList className="w-full justify-start border-b rounded-none h-auto p-0 bg-transparent gap-6">
+                        <TabsTrigger
+                          value="history"
+                          className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-0 py-3"
+                        >
+                          Medical History
+                        </TabsTrigger>
+                        <TabsTrigger
+                          value="labs"
+                          className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-0 py-3"
+                        >
+                          Lab Results
+                        </TabsTrigger>
+                        <TabsTrigger
+                          value="predictions"
+                          className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-0 py-3"
+                        >
+                          AI Predictions
+                        </TabsTrigger>
+                      </TabsList>
+
+                      <TabsContent value="history" className="mt-6 space-y-6">
+                        {selectedPatient.healthRecords && selectedPatient.healthRecords.length > 0 ? (
+                          <div className="space-y-4">
+                            {selectedPatient.healthRecords.map((record) => (
+                              <Card key={record.id} className="overflow-hidden hover:shadow-md transition-shadow">
+                                <div className={`h-1 w-full ${record.riskLevel === 'critical' ? 'bg-destructive' :
+                                  record.riskLevel === 'high' ? 'bg-orange-500' :
+                                    'bg-emerald-500'
+                                  }`} />
+                                <CardContent className="p-6 space-y-4">
+                                  <div className="flex items-start justify-between">
+                                    <div className="space-y-1">
+                                      <div className="flex items-center gap-3">
+                                        <h4 className="font-bold text-lg">{record.diseaseName}</h4>
+                                        <RiskBadge level={record.riskLevel as any} />
+                                      </div>
+                                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                        <Calendar className="h-3 w-3" />
+                                        {new Date(record.dateTime).toLocaleDateString()}
+                                        <span className="text-border">|</span>
+                                        <Clock className="h-3 w-3" />
+                                        {new Date(record.dateTime).toLocaleTimeString()}
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  <div className="grid md:grid-cols-2 gap-6 text-sm bg-muted/30 p-4 rounded-lg">
+                                    <div className="space-y-3">
+                                      <div>
+                                        <span className="font-medium text-muted-foreground block mb-1">Hospital Details</span>
+                                        <div className="flex items-center gap-2">
+                                          <HospitalIcon className="h-4 w-4 text-primary" />
+                                          <span>{record.hospital.name}</span>
+                                        </div>
+                                        <p className="text-xs text-muted-foreground ml-6">{record.hospital.location}</p>
+                                      </div>
+                                      <div>
+                                        <span className="font-medium text-muted-foreground block mb-1">Attending Doctor</span>
+                                        <div className="flex items-center gap-2">
+                                          <UserCircle className="h-4 w-4 text-primary" />
+                                          <span>Dr. {record.doctor.name}</span>
+                                        </div>
+                                        <p className="text-xs text-muted-foreground ml-6">{record.doctor.specialization || "General Physician"}</p>
+                                      </div>
+                                    </div>
+                                    <div className="space-y-3">
+                                      <div>
+                                        <span className="font-medium text-muted-foreground block mb-1">Diagnosis</span>
+                                        <p className="leading-relaxed">{record.diseaseDescription}</p>
+                                      </div>
+                                      {record.treatment && (
+                                        <div>
+                                          <span className="font-medium text-muted-foreground block mb-1">Treatment Plan</span>
+                                          <p className="leading-relaxed">{record.treatment}</p>
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+
+                                  {record.emergencyWarnings && (
+                                    <div className="bg-destructive/5 border border-destructive/20 rounded-lg p-4 flex gap-3">
+                                      <AlertCircle className="h-5 w-5 text-destructive shrink-0" />
+                                      <div>
+                                        <h5 className="font-semibold text-destructive mb-1">Emergency Warning</h5>
+                                        <p className="text-sm text-destructive/80">{record.emergencyWarnings}</p>
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {record.mediaFiles && record.mediaFiles.length > 0 && (
+                                    <div>
+                                      <p className="text-sm font-medium mb-2">Attached Documents</p>
+                                      <div className="flex flex-wrap gap-2">
+                                        {record.mediaFiles.map((file, idx) => (
+                                          <Badge key={idx} variant="secondary" className="pl-1 pr-3 py-1 h-auto">
+                                            <FileText className="h-3 w-3 mr-1" />
+                                            {file.name}
+                                          </Badge>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  <div className="pt-4 border-t">
+                                    <label className="text-sm font-medium mb-2 block">Doctor's Notes</label>
+                                    <div className="flex gap-2">
+                                      <Textarea
+                                        placeholder="Add clinical observations..."
+                                        value={noteText}
+                                        onChange={(e) => setNoteText(e.target.value)}
+                                        className="min-h-[80px] bg-background"
+                                      />
+                                      <Button
+                                        className="self-end"
+                                        onClick={() => addNoteMutation.mutate({ recordId: record.id, note: noteText })}
+                                        disabled={!noteText || addNoteMutation.isPending}
+                                      >
+                                        Save Note
+                                      </Button>
+                                    </div>
+                                  </div>
+                                </CardContent>
+                              </Card>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="text-center py-12 border-2 border-dashed rounded-xl">
+                            <ClipboardList className="h-12 w-12 mx-auto text-muted-foreground/30 mb-3" />
+                            <h3 className="text-lg font-medium">No Medical Records</h3>
+                            <p className="text-muted-foreground">This patient has no history records yet.</p>
+                          </div>
+                        )}
+                      </TabsContent>
+
+                      <TabsContent value="labs" className="mt-6">
+                        <LabResults patientId={selectedPatient.id} canUpload={false} />
+                      </TabsContent>
+
+                      <TabsContent value="predictions" className="mt-6">
+                        <PredictionDashboard patientId={selectedPatient.id} canGenerate={true} />
+                      </TabsContent>
+                    </Tabs>
+                  </CardContent>
+                </Card>
+              </motion.div>
+            ) : (
+              <div className="h-full flex items-center justify-center p-12 text-center border-2 border-dashed rounded-xl bg-muted/10">
+                <div className="max-w-md space-y-4">
+                  <div className="bg-primary/10 p-4 rounded-full w-20 h-20 flex items-center justify-center mx-auto">
+                    <Search className="h-10 w-10 text-primary" />
+                  </div>
+                  <h3 className="text-2xl font-bold">Select a Patient</h3>
+                  <p className="text-muted-foreground">
+                    Search for a patient using the panel on the left to view their complete medical history, lab results, and AI predictions.
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </main>
+
+      <Dialog open={isSummaryModalOpen} onOpenChange={setIsSummaryModalOpen}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>AI Health Summary Preview</DialogTitle>
+            <DialogDescription>
+              Review the AI-generated summary for {selectedPatient?.name}.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="bg-muted/30 p-4 rounded-lg border text-sm leading-relaxed whitespace-pre-wrap">
+            {summaryData?.summary}
+          </div>
+
+          <div className="flex justify-end gap-3 mt-4">
+            <Button variant="outline" onClick={() => setIsSummaryModalOpen(false)}>
+              Close
+            </Button>
+            <Button
+              onClick={() => {
+                if (selectedPatient && summaryData) {
+                  generateAISummaryPDF(selectedPatient.name, summaryData.summary);
+                  setIsSummaryModalOpen(false);
+                  toast({
+                    title: "PDF Downloaded",
+                    description: "Summary PDF has been saved",
+                  });
+                }
+              }}
+            >
+              <Download className="h-4 w-4 mr-2" />
+              Download PDF
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
   );
 }
+

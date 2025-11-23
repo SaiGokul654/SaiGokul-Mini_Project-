@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Plus, X, TrendingUp, TrendingDown, Minus } from "lucide-react";
+import React, { useState } from "react";
+import { Plus, X, TrendingUp, TrendingDown, Minus, Edit } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,12 +8,19 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
-import { useAddLabResult, useLabResults, useLabTrends, useReferenceRanges } from "@/hooks/usePredictionsAndLabs";
+import { useAddLabResult, useLabResults, useLabTrends, useReferenceRanges, useUpdateLabResult } from "@/hooks/usePredictionsAndLabs";
 import { Skeleton } from "@/components/ui/skeleton";
 
 interface LabResultsProps {
   patientId: string;
   canUpload?: boolean;
+}
+
+interface LabTrend {
+  testName: string;
+  data: { date: string; value: number }[];
+  trend: 'improving' | 'worsening' | 'stable' | 'increasing' | 'decreasing';
+  normalRange: { min: number; max: number } | null;
 }
 
 export function LabResults({ patientId, canUpload = false }: LabResultsProps) {
@@ -27,7 +34,7 @@ export function LabResults({ patientId, canUpload = false }: LabResultsProps) {
       {canUpload && showUploadForm && (
         <LabResultUploadForm
           patientId={patientId}
-          referenceRanges={referenceRanges?.ranges || {}}
+          referenceRanges={(referenceRanges as any)?.ranges || {}}
           onSuccess={() => {
             setShowUploadForm(false);
             toast({ title: "Lab result added", description: "Lab result has been saved successfully" });
@@ -40,7 +47,7 @@ export function LabResults({ patientId, canUpload = false }: LabResultsProps) {
           <Skeleton className="h-32 w-full" />
           <Skeleton className="h-32 w-full" />
         </div>
-      ) : labResults?.labResults && labResults.labResults.length > 0 ? (
+      ) : (labResults as any)?.labResults && (labResults as any).labResults.length > 0 ? (
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="text-lg font-semibold">Previous Lab Results</h3>
@@ -51,7 +58,7 @@ export function LabResults({ patientId, canUpload = false }: LabResultsProps) {
               </Button>
             )}
           </div>
-          {labResults.labResults.map((result: any) => (
+          {(labResults as any).labResults.map((result: any) => (
             <LabResultCard key={result.id} result={result} patientId={patientId} />
           ))}
         </div>
@@ -72,14 +79,15 @@ export function LabResults({ patientId, canUpload = false }: LabResultsProps) {
   );
 }
 
-function LabResultUploadForm({ patientId, referenceRanges, onSuccess }: any) {
+function LabResultUploadForm({ patientId, referenceRanges, onSuccess, initialData, isEditing = false }: any) {
   const { toast } = useToast();
   const addLabResult = useAddLabResult();
-  const [testDate, setTestDate] = useState(new Date().toISOString().split('T')[0]);
-  const [testType, setTestType] = useState("Blood Test");
-  const [labName, setLabName] = useState("");
-  const [doctorId, setDoctorId] = useState("");
-  const [testResults, setTestResults] = useState<any[]>([]);
+  const updateLabResult = useUpdateLabResult();
+  const [testDate, setTestDate] = useState(initialData?.testDate ? new Date(initialData.testDate).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]);
+  const [testType, setTestType] = useState(initialData?.testType || "Blood Test");
+  const [labName, setLabName] = useState(initialData?.labName || "");
+  const [doctorId, setDoctorId] = useState(initialData?.orderedBy || "");
+  const [testResults, setTestResults] = useState<any[]>(initialData?.results || []);
 
   const addTestResult = () => {
     setTestResults([...testResults, {
@@ -129,7 +137,7 @@ function LabResultUploadForm({ patientId, referenceRanges, onSuccess }: any) {
       testResults.some(t => t.isAbnormal) ? 'abnormal' : 'normal';
 
     try {
-      await addLabResult.mutateAsync({
+      const resultData = {
         patientId,
         testDate: new Date(testDate),
         testType,
@@ -137,18 +145,27 @@ function LabResultUploadForm({ patientId, referenceRanges, onSuccess }: any) {
         labName,
         results: testResults,
         overallStatus
-      });
+      };
+
+      if (isEditing && initialData?.id) {
+        await updateLabResult.mutateAsync({
+          id: initialData.id,
+          data: resultData
+        });
+      } else {
+        await addLabResult.mutateAsync(resultData);
+      }
       onSuccess();
     } catch (error: any) {
-      toast({ title: "Failed to add lab result", description: error.message, variant: "destructive" });
+      toast({ title: isEditing ? "Failed to update lab result" : "Failed to add lab result", description: error.message, variant: "destructive" });
     }
   };
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Add New Lab Result</CardTitle>
-        <CardDescription>Enter laboratory test results for the patient</CardDescription>
+        <CardTitle>{isEditing ? "Edit Lab Result" : "Add New Lab Result"}</CardTitle>
+        <CardDescription>{isEditing ? "Update laboratory test results" : "Enter laboratory test results for the patient"}</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="grid grid-cols-2 gap-4">
@@ -234,8 +251,8 @@ function LabResultUploadForm({ patientId, referenceRanges, onSuccess }: any) {
           ))}
         </div>
 
-        <Button className="w-full" onClick={handleSubmit} disabled={addLabResult.isPending}>
-          {addLabResult.isPending ? "Saving..." : "Save Lab Result"}
+        <Button className="w-full" onClick={handleSubmit} disabled={addLabResult.isPending || updateLabResult.isPending}>
+          {addLabResult.isPending || updateLabResult.isPending ? "Saving..." : isEditing ? "Update Lab Result" : "Save Lab Result"}
         </Button>
       </CardContent>
     </Card>
@@ -245,6 +262,20 @@ function LabResultUploadForm({ patientId, referenceRanges, onSuccess }: any) {
 function LabResultCard({ result, patientId }: any) {
   const [selectedTest, setSelectedTest] = useState<string | null>(null);
   const { data: trends } = useLabTrends(patientId, selectedTest || undefined);
+  const [isEditing, setIsEditing] = useState(false);
+  const { data: referenceRanges } = useReferenceRanges();
+
+  if (isEditing) {
+    return (
+      <LabResultUploadForm
+        patientId={patientId}
+        referenceRanges={(referenceRanges as any)?.ranges || {}}
+        onSuccess={() => setIsEditing(false)}
+        initialData={result}
+        isEditing={true}
+      />
+    );
+  }
 
   return (
     <Card>
@@ -254,9 +285,14 @@ function LabResultCard({ result, patientId }: any) {
             <CardTitle>{result.testType}</CardTitle>
             <CardDescription>{new Date(result.testDate).toLocaleDateString()} • {result.labName}</CardDescription>
           </div>
-          <Badge variant={result.overallStatus === 'critical' ? 'destructive' : result.overallStatus === 'abnormal' ? 'default' : 'secondary'}>
-            {result.overallStatus}
-          </Badge>
+          <div className="flex items-center gap-2">
+            <Button variant="ghost" size="sm" onClick={() => setIsEditing(true)}>
+              <Edit className="h-4 w-4 mr-1" /> Edit
+            </Button>
+            <Badge variant={result.overallStatus === 'critical' ? 'destructive' : result.overallStatus === 'abnormal' ? 'default' : 'secondary'}>
+              {result.overallStatus as string}
+            </Badge>
+          </div>
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -278,20 +314,20 @@ function LabResultCard({ result, patientId }: any) {
           ))}
         </div>
 
-        {selectedTest && trends && (
+        {selectedTest && !!trends && (
           <Card className="bg-accent/20">
             <CardHeader>
               <CardTitle className="text-base">Trend: {selectedTest}</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="flex items-center gap-2 mb-3">
-                {(trends as any).trend === 'improving' && <TrendingDown className="h-5 w-5 text-green-500" />}
-                {(trends as any).trend === 'worsening' && <TrendingUp className="h-5 w-5 text-red-500" />}
-                {(trends as any).trend === 'stable' && <Minus className="h-5 w-5 text-yellow-500" />}
-                <span className="font-medium capitalize">{(trends as any).trend}</span>
+                {(trends as unknown as LabTrend).trend === 'improving' && <TrendingDown className="h-5 w-5 text-green-500" />}
+                {(trends as unknown as LabTrend).trend === 'worsening' && <TrendingUp className="h-5 w-5 text-red-500" />}
+                {(trends as unknown as LabTrend).trend === 'stable' && <Minus className="h-5 w-5 text-yellow-500" />}
+                <span className="font-medium capitalize">{(trends as unknown as LabTrend).trend}</span>
               </div>
               <div className="space-y-1">
-                {((trends as any).data || []).slice(-5).map((point: any, idx: number) => (
+                {((trends as unknown as LabTrend).data || []).slice(-5).map((point: any, idx: number) => (
                   <div key={idx} className="flex items-center justify-between text-sm">
                     <span className="text-muted-foreground">{new Date(point.date).toLocaleDateString()}</span>
                     <span className="font-medium">{point.value}</span>

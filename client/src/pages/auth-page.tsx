@@ -14,7 +14,16 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { setAuthUser } from "@/lib/auth";
-import { Activity, UserCircle, Hospital, Stethoscope } from "lucide-react";
+import { Activity, UserCircle, Hospital, Stethoscope, ShieldCheck, HeartPulse } from "lucide-react";
+import { motion } from "framer-motion";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 
 const loginSchema = z.object({
   roleId: z.string().min(1, "ID is required"),
@@ -38,15 +47,6 @@ const registerSchema = z.object({
 
 type LoginFormData = z.infer<typeof loginSchema>;
 type RegisterFormData = z.infer<typeof registerSchema>;
-
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
 
 function ResetPasswordDialog() {
   const [step, setStep] = useState<"identify" | "verify" | "reset">("identify");
@@ -107,8 +107,6 @@ function ResetPasswordDialog() {
       toast({ title: "Error", description: "Please enter OTP", variant: "destructive" });
       return;
     }
-    // In this flow, we just move to next step, actual verification happens at reset
-    // But we could verify OTP here too if we had a separate endpoint
     setStep("reset");
   };
 
@@ -133,11 +131,11 @@ function ResetPasswordDialog() {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button variant="link" className="p-0 h-auto font-normal text-muted-foreground hover:text-primary">
+        <Button variant="link" className="p-0 h-auto font-normal text-primary/80 hover:text-primary">
           Forgot your password? Reset Password
         </Button>
       </DialogTrigger>
-      <DialogContent>
+      <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Reset Password</DialogTitle>
           <DialogDescription>
@@ -328,299 +326,334 @@ export default function AuthPage() {
     }
   };
 
-  const getRoleIcon = (role: string) => {
-    switch (role) {
-      case "doctor":
-        return <Stethoscope className="h-5 w-5" />;
-      case "patient":
-        return <UserCircle className="h-5 w-5" />;
-      case "hospital":
-        return <Hospital className="h-5 w-5" />;
-      default:
-        return <Activity className="h-5 w-5" />;
-    }
-  };
-
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-blue-100 dark:from-gray-900 dark:to-gray-800 p-4">
-      <Card className="w-full max-w-md">
-        <CardHeader className="space-y-1 text-center">
-          <div className="flex items-center justify-center mb-4">
-            <Activity className="h-10 w-10 text-primary" />
-          </div>
-          <CardTitle className="text-3xl font-bold">MediScan AI</CardTitle>
-          <CardDescription>Instant Patient History Retrieval</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "login" | "register")}>
-            <TabsList className="grid w-full grid-cols-2">
-              <TabsTrigger value="login" data-testid="tab-login">Login</TabsTrigger>
-              <TabsTrigger value="register" data-testid="tab-register">Register</TabsTrigger>
-            </TabsList>
-
-            <TabsContent value="login" className="space-y-4">
-              <Form {...loginForm}>
-                <form onSubmit={loginForm.handleSubmit(onLogin)} className="space-y-4">
-                  <FormField
-                    control={loginForm.control}
-                    name="role"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Role</FormLabel>
-                        <Select onValueChange={field.onChange} defaultValue={field.value}>
-                          <FormControl>
-                            <SelectTrigger data-testid="select-login-role">
-                              <SelectValue placeholder="Select your role" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            <SelectItem value="doctor">
-                              <div className="flex items-center gap-2">
-                                <Stethoscope className="h-4 w-4" />
-                                Doctor
-                              </div>
-                            </SelectItem>
-                            <SelectItem value="patient">
-                              <div className="flex items-center gap-2">
-                                <UserCircle className="h-4 w-4" />
-                                Patient
-                              </div>
-                            </SelectItem>
-                            <SelectItem value="hospital">
-                              <div className="flex items-center gap-2">
-                                <Hospital className="h-4 w-4" />
-                                Hospital Authority
-                              </div>
-                            </SelectItem>
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={loginForm.control}
-                    name="roleId"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>{getRoleIdLabel(loginForm.watch("role"))}</FormLabel>
-                        <FormControl>
-                          <Input
-                            placeholder="Enter your ID"
-                            {...field}
-                            data-testid="input-login-roleid"
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={loginForm.control}
-                    name="password"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Password</FormLabel>
-                        <FormControl>
-                          <Input
-                            type="password"
-                            placeholder="Enter your password"
-                            {...field}
-                            data-testid="input-login-password"
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <Button
-                    type="submit"
-                    className="w-full"
-                    disabled={loginMutation.isPending}
-                    data-testid="button-login-submit"
-                  >
-                    {loginMutation.isPending ? "Logging in..." : "Login"}
-                  </Button>
-                </form>
-              </Form>
-
-              <div className="text-center text-sm text-muted-foreground">
-                <ResetPasswordDialog />
+    <div className="min-h-screen flex w-full bg-background">
+      {/* Left Side - Form */}
+      <div className="flex-1 flex items-center justify-center p-8 lg:p-12">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5 }}
+          className="w-full max-w-md space-y-8"
+        >
+          <div className="text-center space-y-2">
+            <div className="flex justify-center">
+              <div className="h-12 w-12 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
+                <Activity className="h-8 w-8" />
               </div>
-            </TabsContent>
+            </div>
+            <h1 className="text-3xl font-bold tracking-tight text-foreground">Welcome to MediScan AI</h1>
+            <p className="text-muted-foreground">
+              Secure, instant access to patient medical history.
+            </p>
+          </div>
 
-            <TabsContent value="register" className="space-y-4">
-              <Form {...registerForm}>
-                <form onSubmit={registerForm.handleSubmit(onRegister)} className="space-y-4">
-                  <FormField
-                    control={registerForm.control}
-                    name="role"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Role</FormLabel>
-                        <Select onValueChange={field.onChange} defaultValue={field.value}>
-                          <FormControl>
-                            <SelectTrigger data-testid="select-register-role">
-                              <SelectValue placeholder="Select your role" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            <SelectItem value="doctor">Doctor</SelectItem>
-                            <SelectItem value="patient">Patient</SelectItem>
-                            <SelectItem value="hospital">Hospital Authority</SelectItem>
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
+          <Card className="border-none shadow-none bg-transparent">
+            <CardContent className="p-0">
+              <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "login" | "register")}>
+                <TabsList className="grid w-full grid-cols-2 mb-8">
+                  <TabsTrigger value="login" data-testid="tab-login">Login</TabsTrigger>
+                  <TabsTrigger value="register" data-testid="tab-register">Register</TabsTrigger>
+                </TabsList>
 
-                  <div className="grid grid-cols-2 gap-4">
-                    <FormField
-                      control={registerForm.control}
-                      name="name"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Full Name</FormLabel>
-                          <FormControl>
-                            <Input placeholder="John Doe" {...field} data-testid="input-register-name" />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
+                <TabsContent value="login" className="space-y-6">
+                  <Form {...loginForm}>
+                    <form onSubmit={loginForm.handleSubmit(onLogin)} className="space-y-4">
+                      <FormField
+                        control={loginForm.control}
+                        name="role"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>I am a</FormLabel>
+                            <Select onValueChange={field.onChange} defaultValue={field.value}>
+                              <FormControl>
+                                <SelectTrigger className="h-11">
+                                  <SelectValue placeholder="Select your role" />
+                                </SelectTrigger>
+                              </FormControl>
+                              <SelectContent>
+                                <SelectItem value="doctor">
+                                  <div className="flex items-center gap-2">
+                                    <Stethoscope className="h-4 w-4 text-primary" />
+                                    <span>Doctor</span>
+                                  </div>
+                                </SelectItem>
+                                <SelectItem value="patient">
+                                  <div className="flex items-center gap-2">
+                                    <UserCircle className="h-4 w-4 text-primary" />
+                                    <span>Patient</span>
+                                  </div>
+                                </SelectItem>
+                                <SelectItem value="hospital">
+                                  <div className="flex items-center gap-2">
+                                    <Hospital className="h-4 w-4 text-primary" />
+                                    <span>Hospital Authority</span>
+                                  </div>
+                                </SelectItem>
+                              </SelectContent>
+                            </Select>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
 
-                    <FormField
-                      control={registerForm.control}
-                      name="age"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Age</FormLabel>
-                          <FormControl>
-                            <Input
-                              type="number"
-                              placeholder="25"
-                              {...field}
-                              onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value) : undefined)}
-                              data-testid="input-register-age"
-                            />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
+                      <FormField
+                        control={loginForm.control}
+                        name="roleId"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>{getRoleIdLabel(loginForm.watch("role"))}</FormLabel>
+                            <FormControl>
+                              <Input
+                                placeholder="Enter your ID"
+                                {...field}
+                                className="h-11"
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+
+                      <FormField
+                        control={loginForm.control}
+                        name="password"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Password</FormLabel>
+                            <FormControl>
+                              <Input
+                                type="password"
+                                placeholder="Enter your password"
+                                {...field}
+                                className="h-11"
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+
+                      <Button
+                        type="submit"
+                        className="w-full h-11 text-base font-medium shadow-lg shadow-primary/20 hover:shadow-primary/30 transition-all"
+                        disabled={loginMutation.isPending}
+                      >
+                        {loginMutation.isPending ? "Logging in..." : "Sign In"}
+                      </Button>
+                    </form>
+                  </Form>
+
+                  <div className="text-center">
+                    <ResetPasswordDialog />
                   </div>
+                </TabsContent>
 
-                  <FormField
-                    control={registerForm.control}
-                    name="roleId"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>{getRoleIdLabel(registerForm.watch("role"))}</FormLabel>
-                        <FormControl>
-                          <Input
-                            placeholder="Enter your ID"
-                            {...field}
-                            data-testid="input-register-roleid"
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
+                <TabsContent value="register" className="space-y-6">
+                  <Form {...registerForm}>
+                    <form onSubmit={registerForm.handleSubmit(onRegister)} className="space-y-4">
+                      <FormField
+                        control={registerForm.control}
+                        name="role"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>I am a</FormLabel>
+                            <Select onValueChange={field.onChange} defaultValue={field.value}>
+                              <FormControl>
+                                <SelectTrigger className="h-11">
+                                  <SelectValue placeholder="Select your role" />
+                                </SelectTrigger>
+                              </FormControl>
+                              <SelectContent>
+                                <SelectItem value="doctor">Doctor</SelectItem>
+                                <SelectItem value="patient">Patient</SelectItem>
+                                <SelectItem value="hospital">Hospital Authority</SelectItem>
+                              </SelectContent>
+                            </Select>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
 
-                  <FormField
-                    control={registerForm.control}
-                    name="email"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Email (Optional)</FormLabel>
-                        <FormControl>
-                          <Input
-                            type="email"
-                            placeholder="john@example.com"
-                            {...field}
-                            data-testid="input-register-email"
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
+                      <div className="grid grid-cols-2 gap-4">
+                        <FormField
+                          control={registerForm.control}
+                          name="name"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Full Name</FormLabel>
+                              <FormControl>
+                                <Input placeholder="John Doe" {...field} className="h-11" />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
 
-                  <FormField
-                    control={registerForm.control}
-                    name="phone"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Phone (Optional)</FormLabel>
-                        <FormControl>
-                          <Input
-                            placeholder="+91 9876543210"
-                            {...field}
-                            data-testid="input-register-phone"
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
+                        <FormField
+                          control={registerForm.control}
+                          name="age"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Age</FormLabel>
+                              <FormControl>
+                                <Input
+                                  type="number"
+                                  placeholder="25"
+                                  {...field}
+                                  onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value) : undefined)}
+                                  className="h-11"
+                                />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                      </div>
 
-                  <FormField
-                    control={registerForm.control}
-                    name="password"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Password</FormLabel>
-                        <FormControl>
-                          <Input
-                            type="password"
-                            placeholder="Min. 6 characters"
-                            {...field}
-                            data-testid="input-register-password"
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
+                      <FormField
+                        control={registerForm.control}
+                        name="roleId"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>{getRoleIdLabel(registerForm.watch("role"))}</FormLabel>
+                            <FormControl>
+                              <Input
+                                placeholder="Enter your ID"
+                                {...field}
+                                className="h-11"
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
 
-                  <FormField
-                    control={registerForm.control}
-                    name="confirmPassword"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Confirm Password</FormLabel>
-                        <FormControl>
-                          <Input
-                            type="password"
-                            placeholder="Re-enter password"
-                            {...field}
-                            data-testid="input-register-confirm-password"
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
+                      <FormField
+                        control={registerForm.control}
+                        name="email"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Email (Optional)</FormLabel>
+                            <FormControl>
+                              <Input
+                                type="email"
+                                placeholder="john@example.com"
+                                {...field}
+                                className="h-11"
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
 
-                  <Button
-                    type="submit"
-                    className="w-full"
-                    disabled={registerMutation.isPending}
-                    data-testid="button-register-submit"
-                  >
-                    {registerMutation.isPending ? "Registering..." : "Register"}
-                  </Button>
-                </form>
-              </Form>
-            </TabsContent>
-          </Tabs>
-        </CardContent>
-      </Card>
+                      <FormField
+                        control={registerForm.control}
+                        name="phone"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Phone (Optional)</FormLabel>
+                            <FormControl>
+                              <Input
+                                placeholder="+91 9876543210"
+                                {...field}
+                                className="h-11"
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+
+                      <div className="grid grid-cols-2 gap-4">
+                        <FormField
+                          control={registerForm.control}
+                          name="password"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Password</FormLabel>
+                              <FormControl>
+                                <Input
+                                  type="password"
+                                  placeholder="Min. 6 chars"
+                                  {...field}
+                                  className="h-11"
+                                />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+
+                        <FormField
+                          control={registerForm.control}
+                          name="confirmPassword"
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel>Confirm</FormLabel>
+                              <FormControl>
+                                <Input
+                                  type="password"
+                                  placeholder="Re-enter"
+                                  {...field}
+                                  className="h-11"
+                                />
+                              </FormControl>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                      </div>
+
+                      <Button
+                        type="submit"
+                        className="w-full h-11 text-base font-medium shadow-lg shadow-primary/20 hover:shadow-primary/30 transition-all"
+                        disabled={registerMutation.isPending}
+                      >
+                        {registerMutation.isPending ? "Creating Account..." : "Create Account"}
+                      </Button>
+                    </form>
+                  </Form>
+                </TabsContent>
+              </Tabs>
+            </CardContent>
+          </Card>
+        </motion.div>
+      </div>
+
+      {/* Right Side - Visual */}
+      <div className="hidden lg:flex flex-1 bg-muted/30 relative overflow-hidden items-center justify-center p-12">
+        <div className="absolute inset-0 bg-gradient-to-br from-primary/20 via-accent/20 to-background/50" />
+        <div className="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1576091160399-112ba8d25d1d?ixlib=rb-4.0.3&auto=format&fit=crop&w=2070&q=80')] bg-cover bg-center opacity-10 mix-blend-overlay" />
+
+        <motion.div
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.7, delay: 0.2 }}
+          className="relative z-10 max-w-lg text-center space-y-6"
+        >
+          <div className="grid grid-cols-2 gap-4 mb-8">
+            <div className="bg-background/80 backdrop-blur-sm p-6 rounded-2xl shadow-xl border border-white/20 transform -rotate-3">
+              <HeartPulse className="h-10 w-10 text-rose-500 mb-3" />
+              <h3 className="font-semibold text-lg">Real-time Vitals</h3>
+              <p className="text-sm text-muted-foreground">Monitor patient health instantly</p>
+            </div>
+            <div className="bg-background/80 backdrop-blur-sm p-6 rounded-2xl shadow-xl border border-white/20 transform translate-y-8 rotate-3">
+              <ShieldCheck className="h-10 w-10 text-primary mb-3" />
+              <h3 className="font-semibold text-lg">Secure Data</h3>
+              <p className="text-sm text-muted-foreground">Encrypted patient records</p>
+            </div>
+          </div>
+
+          <div className="bg-background/60 backdrop-blur-md p-8 rounded-3xl border border-white/20 shadow-2xl">
+            <h2 className="text-2xl font-bold text-foreground mb-4">Transforming Healthcare</h2>
+            <p className="text-muted-foreground leading-relaxed">
+              "MediScan AI bridges the gap between doctors, patients, and hospitals with seamless data integration and intelligent insights."
+            </p>
+          </div>
+        </motion.div>
+      </div>
     </div>
   );
 }

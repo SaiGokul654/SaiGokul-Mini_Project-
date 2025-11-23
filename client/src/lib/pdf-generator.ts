@@ -13,11 +13,11 @@ export function generatePatientHistoryPDF(
   doc.setFontSize(18);
   doc.setFont("helvetica", "bold");
   doc.text("Patient Health History", pageWidth / 2, yPos, { align: "center" });
-  
+
   yPos += 15;
   doc.setFontSize(10);
   doc.setFont("helvetica", "normal");
-  
+
   doc.text(`Patient ID: ${patient.patientId}`, 20, yPos);
   yPos += 6;
   doc.text(`Name: ${patient.name}`, 20, yPos);
@@ -27,7 +27,7 @@ export function generatePatientHistoryPDF(
   doc.text(`Phone: ${patient.phone || "N/A"}`, 20, yPos);
   yPos += 6;
   doc.text(`Blood Group: ${patient.bloodGroup || "N/A"}`, 20, yPos);
-  
+
   yPos += 12;
   doc.setDrawColor(200, 200, 200);
   doc.line(20, yPos, pageWidth - 20, yPos);
@@ -59,31 +59,39 @@ export function generatePatientHistoryPDF(
     yPos += 5;
     doc.text(`Disease: ${record.diseaseName}`, 25, yPos);
     yPos += 5;
-    
+
     const descLines = doc.splitTextToSize(`Description: ${record.diseaseDescription}`, pageWidth - 50);
     doc.text(descLines, 25, yPos);
     yPos += descLines.length * 5;
-    
+
     if (record.treatment) {
       const treatmentLines = doc.splitTextToSize(`Treatment: ${record.treatment}`, pageWidth - 50);
       doc.text(treatmentLines, 25, yPos);
       yPos += treatmentLines.length * 5;
     }
-    
+
+    if (record.prescription) {
+      const prescriptionLines = doc.splitTextToSize(`Prescription: ${record.prescription}`, pageWidth - 50);
+      doc.text(prescriptionLines, 25, yPos);
+      yPos += prescriptionLines.length * 5;
+    }
+
     doc.setFont("helvetica", "bold");
     const riskColor = getRiskColor(record.riskLevel);
     doc.setTextColor(riskColor.r, riskColor.g, riskColor.b);
     doc.text(`Risk Level: ${record.riskLevel.toUpperCase()}`, 25, yPos);
     doc.setTextColor(0, 0, 0);
+    doc.setFont("helvetica", "normal");
     yPos += 5;
-    
+
     if (record.emergencyWarnings) {
-      doc.setFont("helvetica", "italic");
-      const warningLines = doc.splitTextToSize(`⚠ ${record.emergencyWarnings}`, pageWidth - 50);
+      doc.setTextColor(220, 38, 38);
+      const warningLines = doc.splitTextToSize(`⚠ Warning: ${record.emergencyWarnings}`, pageWidth - 50);
       doc.text(warningLines, 25, yPos);
+      doc.setTextColor(0, 0, 0);
       yPos += warningLines.length * 5;
     }
-    
+
     yPos += 8;
     doc.setDrawColor(230, 230, 230);
     doc.line(25, yPos, pageWidth - 20, yPos);
@@ -105,14 +113,14 @@ export function generateAISummaryPDF(
   doc.setFontSize(18);
   doc.setFont("helvetica", "bold");
   doc.text("AI-Generated Patient Summary", pageWidth / 2, yPos, { align: "center" });
-  
+
   yPos += 15;
   doc.setFontSize(12);
   doc.setFont("helvetica", "normal");
   doc.text(`Patient: ${patientName}`, 20, yPos);
   yPos += 6;
   doc.text(`Generated: ${new Date().toLocaleString()}`, 20, yPos);
-  
+
   yPos += 12;
   doc.setDrawColor(200, 200, 200);
   doc.line(20, yPos, pageWidth - 20, yPos);

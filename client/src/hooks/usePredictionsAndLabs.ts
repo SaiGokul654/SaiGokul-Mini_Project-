@@ -62,6 +62,22 @@ export function useAddLabResult() {
     });
 }
 
+export function useUpdateLabResult() {
+    return useMutation({
+        mutationFn: async ({ id, data }: { id: string; data: any }) => {
+            return await apiRequest("PATCH", `/api/lab-results/${id}`, data);
+        },
+        onSuccess: () => {
+            queryClient.invalidateQueries({
+                predicate: (query) => {
+                    const key = query.queryKey[0];
+                    return typeof key === 'string' && key.includes('/api/lab-results');
+                }
+            });
+        },
+    });
+}
+
 export function useReferenceRanges() {
     return useQuery({
         queryKey: ["/api/lab-results/reference-ranges"],

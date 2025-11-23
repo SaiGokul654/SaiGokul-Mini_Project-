@@ -43,7 +43,7 @@ export function PredictionDashboard({ patientId, canGenerate = false }: Predicti
         );
     }
 
-    if (!dashboard || !dashboard.healthScore) {
+    if (!dashboard || !(dashboard as any).healthScore) {
         return (
             <Card>
                 <CardContent className="py-12 text-center">
@@ -89,25 +89,25 @@ export function PredictionDashboard({ patientId, canGenerate = false }: Predicti
                     <div className="flex items-center gap-6">
                         <div className="flex-1">
                             <div className="flex items-baseline gap-2 mb-2">
-                                <span className="text-5xl font-bold">{dashboard.healthScore}</span>
+                                <span className="text-5xl font-bold">{(dashboard as any).healthScore}</span>
                                 <span className="text-2xl text-muted-foreground">/100</span>
                             </div>
-                            <Progress value={dashboard.healthScore} className="h-3" />
+                            <Progress value={(dashboard as any).healthScore} className="h-3" />
                         </div>
                         <div className="flex items-center gap-2">
-                            {dashboard.trend === 'improving' && (
+                            {(dashboard as any).trend === 'improving' && (
                                 <>
                                     <TrendingUp className="h-6 w-6 text-green-500" />
                                     <span className="text-green-500 font-medium">Improving</span>
                                 </>
                             )}
-                            {dashboard.trend === 'declining' && (
+                            {(dashboard as any).trend === 'declining' && (
                                 <>
                                     <TrendingDown className="h-6 w-6 text-red-500" />
                                     <span className="text-red-500 font-medium">Declining</span>
                                 </>
                             )}
-                            {dashboard.trend === 'stable' && (
+                            {(dashboard as any).trend === 'stable' && (
                                 <span className="text-muted-foreground font-medium">Stable</span>
                             )}
                         </div>
@@ -115,21 +115,21 @@ export function PredictionDashboard({ patientId, canGenerate = false }: Predicti
                 </CardContent>
             </Card>
 
-            {dashboard.currentRisks && dashboard.currentRisks.length > 0 && (
+            {(dashboard as any).currentRisks && (dashboard as any).currentRisks.length > 0 && (
                 <div>
                     <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
                         <AlertTriangle className="h-5 w-5 text-destructive" />
                         High-Risk Conditions
                     </h3>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {dashboard.currentRisks.map((risk: any, idx: number) => (
+                        {(dashboard as any).currentRisks.map((risk: any, idx: number) => (
                             <RiskCard key={idx} risk={risk} />
                         ))}
                     </div>
                 </div>
             )}
 
-            {dashboard.recommendations && dashboard.recommendations.length > 0 && (
+            {(dashboard as any).recommendations && (dashboard as any).recommendations.length > 0 && (
                 <Card>
                     <CardHeader>
                         <CardTitle>Personalized Recommendations</CardTitle>
@@ -137,7 +137,7 @@ export function PredictionDashboard({ patientId, canGenerate = false }: Predicti
                     </CardHeader>
                     <CardContent>
                         <ul className="space-y-2">
-                            {dashboard.recommendations.map((rec: string, idx: number) => (
+                            {(dashboard as any).recommendations.map((rec: string, idx: number) => (
                                 <li key={idx} className="flex items-start gap-2">
                                     <span className="text-primary mt-1">•</span>
                                     <span className="text-sm">{rec}</span>
